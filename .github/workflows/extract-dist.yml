@@ -1,0 +1,30 @@
+name: Extract dist archive
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - name: Extract dist archive
+        run: |
+          git switch gh-pages
+          unzip -o near-splitpay-dist.zip
+          git rm --quiet near-splitpay-dist.zip
+          git rm --quiet --ignore-unmatch assets/index-C9j8PndD.js
+          rm -f assets/index-C9j8PndD.js
+          ls -la
+          ls -la assets
+          git add index.html favicon.svg assets
+          git status --short
+      - name: Commit built site
+        run: |
+          git config user.name "Ahkimochi"
+          git config user.email "ahkimochi@users.noreply.github.com"
+          git commit -m "Deploy new built site (NEAR Connect)" || echo "nothing to commit"
+          git log --oneline -5
+          git push
