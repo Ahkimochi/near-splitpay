@@ -1,13 +1,7 @@
 // NearSplit — app entry, hash router, NEAR wallet bootstrap.
 
-// borsh (used by near-api-js to serialize transactions) expects a Node-style
-// global Buffer; provide the standard `buffer` polyfill before any wallet
-// call can happen. Module loading itself does not need it, and this module's
-// body runs before every NEAR call, so setting it here is early enough.
-import { Buffer } from 'buffer';
-if (!(globalThis as { Buffer?: unknown }).Buffer) {
-  (globalThis as { Buffer?: unknown }).Buffer = Buffer;
-}
+// Wallet connections run through NEAR Connect (@hot-labs/near-connect):
+// a popup wallet picker on this page — no redirect, no Node shims needed.
 
 import './style.css';
 import { h, clear, toast } from './ui';
@@ -16,7 +10,7 @@ import {
   isSignedIn,
   signedInAccountId,
   fetchBalanceYocto,
-  requestSignIn,
+  connectWallet,
   signOut as walletSignOut,
 } from './wallet';
 import {
@@ -27,13 +21,7 @@ import {
   saveNetwork,
   newSplitId,
 } from './store';
-import {
-  decodeSharePayload,
-  freshSuffix,
-  stashPendingPay,
-  readPendingPay,
-  clearPendingPay,
-} from './links';
+import { decodeSharePayload, freshSuffix } from './links';
 import { renderWalletCard, renderHowItWorks } from './views/home';
 import { renderSplitCard } from './views/splitList';
 import { renderCreateForm } from './views/create';
@@ -71,29 +59,24 @@ async function refreshWallet(): Promise<void> {
   render();
 }
 
-/** Strip wallet-return query params (?account_id=… / ?errorMessage=…) once
- *  near-api-js has consumed them, keeping the hash route intact. */
-function cleanWalletReturnParams(): { error?: string } {
-  const params = new URLSearchParams(location.search);
-  const error = params.get('errorMessage') ?? undefined;
-  if (params.has('account_id') || params.has('errorMessage') || params.has('errorCode')) {
-    history.replaceState(null, '', `${location.pathname}${location.hash}`);
-  }
-  return { error };
-}
-
-async function handleConnect(encodedPay?: string): Promise<void> {
+async function handleConnect(): Promise<void> {
   connectBusy = true;
   render();
   try {
     await initNear(wallet.network);
-    // Preserve the pay payload across the full-page wallet redirect: it is
-    // in the URL hash (and thus in the successUrl), and stashed as backup.
-    if (encodedPay) stashPendingPay(encodedPay);
-    await requestSignIn(location.href);
-    // requestSignIn navigates away; reaching this line means it didn't.
+    // NEAR Connect opens its wallet-picker popup on this page and resolves
+    // when the user has signed in — no redirect, so the current route
+    // (including a pay link) is untouched.
+    await connectWallet();
+    await refreshWallet();
   } catch (error) {
-    toast(error instanceof Error ? error.message : 'Could not open the wallet.', 'error');
+    const message = error instanceof Error ? error.message : '';
+    toast(
+      message.toLowerCase().includes('reject')
+        ? 'Wallet connection cancelled — nothing was connected.'
+        : message || 'Could not open the wallet picker.',
+      'error',
+    );
   } finally {
     connectBusy = false;
     render();
@@ -101,7 +84,7 @@ async function handleConnect(encodedPay?: string): Promise<void> {
 }
 
 function handleSignOut(): void {
-  walletSignOut();
+  void walletSignOut();
   wallet.signedIn = false;
   wallet.accountId = undefined;
   wallet.balanceYocto = undefined;
@@ -325,11 +308,11 @@ function render(): void {
         onBack: () => navigate('#/'),
         onConnect: () => {
           // If the app is on the wrong network, align it with the link
-          // first so the sign-in happens against the right wallet/RPC.
+          // first so the sign-in happens against the right network.
           if (wallet.network !== payload.net) {
-            void handleSwitchNetwork(payload.net).then(() => handleConnect(route.encoded));
+            void handleSwitchNetwork(payload.net).then(() => handleConnect());
           } else {
-            void handleConnect(route.encoded);
+            void handleConnect();
           }
         },
         onSwitchNetwork: () => void handleSwitchNetwork(payload.net),
@@ -352,23 +335,9 @@ function render(): void {
 // Boot
 // ---------------------------------------------------------------------------
 
-// If a wallet redirect dropped the pay-link hash, restore it from the stash.
-if (parseRoute().name === 'home') {
-  const stashed = readPendingPay();
-  if (stashed && decodeSharePayload(stashed)) {
-    clearPendingPay();
-    history.replaceState(null, '', `${location.pathname}${location.search}#/pay/${stashed}`);
-  }
-}
-
 render();
 window.addEventListener('hashchange', render);
 
-// Consume the wallet sign-in redirect (if any), refresh state, then clean
-// the return params out of the URL.
-void (async () => {
-  await refreshWallet();
-  const { error } = cleanWalletReturnParams();
-  if (error) toast(`Wallet sign-in failed: ${error}`, 'error');
-  render();
-})();
+// Restore any existing NEAR Connect wallet session for the active
+// network, then re-render with the real connection state.
+void refreshWallet();

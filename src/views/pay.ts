@@ -4,13 +4,13 @@
 import { h, toast } from '../ui';
 import { formatNear } from '../money';
 import { findPaidRecord, recordPaid, loadSplits, upsertSplit } from '../store';
-import { payShare, friendlyError, explorerTxUrl, NETWORKS } from '../wallet';
+import { payShare, friendlyError, explorerTxUrl, WALLET_CREATE_URL } from '../wallet';
 import { isValidNearAccountId, shortenAccountId } from '../validate';
 import type { Participant, SharePayload, WalletState } from '../types';
 
 export interface PayCallbacks {
   onBack: () => void;
-  /** Stash the payload and redirect to the wallet sign-in for payload.net. */
+  /** Open the NEAR Connect wallet-picker popup for payload.net. */
   onConnect: () => void;
   /** Switch the app's active network (to the one this link needs). */
   onSwitchNetwork: () => void;
@@ -96,13 +96,13 @@ export function renderPayView(
       btn.addEventListener('click', cb.onConnect);
       const createLink = h('a', {
         class: 'btn btn-ghost btn-block',
-        href: NETWORKS[payload.net].walletHome,
+        href: WALLET_CREATE_URL[payload.net],
         target: '_blank', rel: 'noopener',
       }, payload.net === 'testnet' ? 'No account yet? Create a free testnet account' : 'No account yet? Create a NEAR account');
       actionRegion.append(btn, createLink);
       noteRegion.append(
         h('p', { class: 'hint' },
-          'You will be sent to your NEAR wallet (MyNearWallet) to connect, then brought straight back to this page to pay. NearSplit never simulates payments — paying means connecting a real wallet and sending real NEAR on ' +
+          'A wallet picker (NEAR Connect) opens right here — pick your wallet (Meteor, Intear, HOT, …) and approve the connection without leaving this page. NearSplit never simulates payments — paying means connecting a real wallet and sending real NEAR on ' +
           (payload.net === 'testnet' ? 'testnet (test funds, no real money).' : 'mainnet.')),
       );
       return;

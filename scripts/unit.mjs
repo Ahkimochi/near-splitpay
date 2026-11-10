@@ -1,17 +1,20 @@
 // Unit tests for NearSplit's pure modules, run against the REAL TypeScript
 // sources (compiled on the fly with the esbuild that ships with Vite — no
-// extra dependencies) and the REAL near-api-js format converters.
+// extra dependencies).
 //
 // Covers: split math exactness (equal + remainder, custom validation, tip),
-// NEAR account-id validation, pay-link encode/decode round-trip, and
-// yocto parse/format round-trips (ours + near-api-js's).
+// NEAR account-id validation, pay-link encode/decode round-trip, yocto
+// parse/format round-trips (our strict parser is the only converter —
+// near-api-js was removed with the NEAR Connect migration), and the
+// wallet module's pure surface (network config, explorer URLs, error
+// mapping, no-session restore) with the REAL @hot-labs/near-connect
+// package bundled in.
 //
 // Run: node scripts/unit.mjs   (or: npm run test:unit)
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { build } from 'esbuild';
-import * as nearApi from 'near-api-js';
 
 // --- tiny localStorage/sessionStorage stubs (store.ts + links.ts use them)
 const mem = () => {
@@ -32,9 +35,10 @@ writeFileSync(entry, `
 export * from ${JSON.stringify(new URL('../src/money.ts', import.meta.url).pathname)};
 export * from ${JSON.stringify(new URL('../src/validate.ts', import.meta.url).pathname)};
 export * from ${JSON.stringify(new URL('../src/links.ts', import.meta.url).pathname)};
+export * from ${JSON.stringify(new URL('../src/wallet.ts', import.meta.url).pathname)};
 `);
 const bundlePath = join(outDir, 'bundle.mjs');
-await build({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'neutral', outfile: bundlePath, logLevel: 'silent' });
+await build({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'browser', outfile: bundlePath, logLevel: 'silent' });
 const M = await import(bundlePath);
 
 // --- harness
@@ -155,23 +159,52 @@ const eq = (a, b) => JSON.stringify(a, (_k, v) => (typeof v === 'bigint' ? `bigi
   check('formatNear adds unit', M.formatNear(M.parseNearToYocto('2')) === '2 NEAR');
 }
 
-// === near-api-js format converters (the real dependency) ====================
+// === Our strict parser is the only converter now ============================
+// (near-api-js and its utils.format converters were removed in the NEAR
+// Connect migration — nothing in the app ever converted user input with
+// them; money.ts always was, and remains, the single conversion path.)
 {
-  const { parseNearAmount, formatNearAmount } = nearApi.utils.format;
-  check('near-api-js parseNearAmount("1.5")', parseNearAmount('1.5') === (15n * 10n ** 23n).toString(), parseNearAmount('1.5'));
-  check('near-api-js parse/format agree with ours on 3.25 NEAR',
-    parseNearAmount('3.25') === M.parseNearToYocto('3.25').toString() &&
-    formatNearAmount(parseNearAmount('3.25')) === '3.25');
-  check('near-api-js parseNearAmount("") -> null', parseNearAmount('') === null);
-  // Documented quirk (verified): near-api-js does NOT validate non-numeric
-  // input — parseNearAmount('abc') returns 'abc000…'. That is exactly why
-  // NearSplit validates user input with its own strict parser (money.ts)
-  // and only relies on near-api-js's converters for well-formed amounts.
-  check('near-api-js parseNearAmount is unsafe on junk (hence our own parser)',
-    parseNearAmount('abc') === 'abc000000000000000000000000' && M.parseNearToYocto('abc') === null);
+  check('parse 1.5 NEAR = 15 * 10^23 yocto',
+    M.parseNearToYocto('1.5') === 15n * 10n ** 23n, M.parseNearToYocto('1.5')?.toString());
+  check('parse/format exact on 3.25 NEAR',
+    M.yoctoToInput(M.parseNearToYocto('3.25')) === '3.25');
+  check('parse("") -> null', M.parseNearToYocto('') === null);
   const roundTrips = ['0.1', '1', '42.42', '0.00001'];
-  check('near-api-js round-trips typical amounts',
-    roundTrips.every((v) => formatNearAmount(parseNearAmount(v)) === v));
+  check('parse/format round-trips typical amounts',
+    roundTrips.every((v) => M.yoctoToInput(M.parseNearToYocto(v)) === v));
+}
+
+// === Wallet module (NEAR Connect) — pure surface + no-session restore =======
+{
+  check('testnet config points at testnet RPC + NearBlocks',
+    M.NETWORKS.testnet.nodeUrl === 'https://rpc.testnet.near.org' &&
+    M.NETWORKS.testnet.explorerTxBase === 'https://testnet.nearblocks.io/txns/');
+  check('mainnet config points at mainnet RPC + NearBlocks',
+    M.NETWORKS.mainnet.nodeUrl === 'https://rpc.mainnet.near.org' &&
+    M.NETWORKS.mainnet.explorerTxBase === 'https://nearblocks.io/txns/');
+  check('no MyNearWallet URLs remain in the network config',
+    !JSON.stringify(M.NETWORKS).includes('mynearwallet'));
+  check('explorerTxUrl composes base + hash',
+    M.explorerTxUrl('testnet', 'ABC123') === 'https://testnet.nearblocks.io/txns/ABC123');
+  check('account-creation links: Intear (testnet) + Meteor (mainnet)',
+    M.WALLET_CREATE_URL.testnet.includes('intear') &&
+    M.WALLET_CREATE_URL.mainnet.includes('meteor'));
+  check('picker rejection maps to a cancelled payment',
+    M.friendlyError(new Error('User rejected')).kind === 'cancelled');
+  check('insufficient funds maps to a plain-language top-up message',
+    M.friendlyError(new Error('insufficient funds')).message.includes('Top up'));
+  check('not signed in before init', M.isSignedIn() === false && M.signedInAccountId() === '');
+  // Real connector construction + session restore with no stored session:
+  // must resolve (manifest fetch may fail offline — that is tolerated) and
+  // report "not connected", never throw into the app.
+  const restored = await Promise.race([
+    M.initNear('testnet').then(() => 'resolved'),
+    new Promise((r) => setTimeout(() => r('timeout'), 20000)),
+  ]);
+  check('initNear(testnet) resolves with no stored session', restored === 'resolved', restored);
+  check('still not signed in after empty restore', M.isSignedIn() === false);
+  check('payShare without a wallet refuses (no fake payment)',
+    await M.payShare('testnet', 'bima.testnet', '1').then(() => false, () => true));
 }
 
 console.log(`\n${total - failures}/${total} checks passed`);

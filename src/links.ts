@@ -78,42 +78,10 @@ export function decodeSharePayload(encoded: string): SharePayload | null {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Wallet-redirect stash
-//
-// Connecting a NEAR wallet is a full-page redirect. The wallet returns the
-// user to the successUrl we give it — which is this same pay link — but if
-// anything in the round trip drops the URL hash, the share payload would be
-// lost. So before redirecting we stash the encoded payload in
-// sessionStorage; on boot, if there is no #/pay/ route but a stash exists,
-// main.ts restores the route.
-// ---------------------------------------------------------------------------
-
-const STASH_KEY = 'nearsplit.pendingPay.v1';
-
-export function stashPendingPay(encoded: string): void {
-  try {
-    sessionStorage.setItem(STASH_KEY, encoded);
-  } catch {
-    // Non-fatal: the hash normally survives anyway.
-  }
-}
-
-export function readPendingPay(): string | null {
-  try {
-    return sessionStorage.getItem(STASH_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function clearPendingPay(): void {
-  try {
-    sessionStorage.removeItem(STASH_KEY);
-  } catch {
-    // Non-fatal.
-  }
-}
+// Note: an earlier build stashed the pay payload in sessionStorage to
+// survive the MyNearWallet full-page sign-in redirect. NEAR Connect's
+// popup flow never leaves the page, so no stash is needed anymore — the
+// payload simply stays in the URL hash where it started.
 
 /** A short-lived unique marker for cloned splits (keeps ids collision-free). */
 export function freshSuffix(): string {

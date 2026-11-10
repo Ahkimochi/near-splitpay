@@ -40,11 +40,12 @@ is that flow: a link, a wallet connect, one tap, settled on NEAR.
   share, the full roster, and a reference code (`NSP-XXXX-N`). Copy button
   and native share sheet (with copy fallback).
 - **One-tap pay page** — big share amount, bill total, organizer account,
-  roster, and progress. "Connect NEAR wallet" runs the MyNearWallet
-  redirect sign-in and returns to the *same* pay link; "Pay X NEAR" then
-  sends a real transfer. Success shows the transaction hash with a
-  NearBlocks link. Rejections and errors (insufficient funds, cancelled in
-  wallet, …) are explained in plain language.
+  roster, and progress. "Connect NEAR wallet" opens the NEAR Connect
+  wallet picker (Meteor, Intear, HOT, …) right on the page — no redirect,
+  the pay link never leaves the screen; "Pay X NEAR" then sends a real
+  transfer, approved in the wallet. Success shows the transaction hash
+  with a NearBlocks link. Rejections and errors (insufficient funds,
+  cancelled in wallet, …) are explained in plain language.
 - **Organizer tools** — "My Splits" list, per-participant status, manual
   mark-as-paid (e.g. someone paid cash), collected vs. outstanding summary,
   clone ("Split again") for repeat bills, and delete (with confirmation).
@@ -67,11 +68,14 @@ npm run dev        # or: npm run build && npm run preview
 1. Open the app — **see** the home screen: wallet card ("No NEAR wallet
    connected"), "+ Create a split", an empty "My splits", and How it works.
    The network toggle in the header is on **Testnet**.
-2. Create a free testnet account at
-   [testnet.mynearwallet.com](https://testnet.mynearwallet.com/) — it comes
-   with test NEAR. Back in NearSplit, click **Connect NEAR wallet**, approve
-   in the wallet — **see** you return to NearSplit with your account id in
-   the header and your balance on the wallet card.
+2. Click **Connect NEAR wallet** — a wallet picker (NEAR Connect) pops up
+   on the page. Pick a wallet that supports testnet — **Intear Wallet**
+   ([wallet.intear.tech](https://wallet.intear.tech/)) or **Meteor
+   Wallet** — and create a free testnet account inside it if you don't
+   have one (it comes with test NEAR). Approve the connection in the
+   wallet — **see** the picker close with your account id in the
+   NearSplit header and your balance on the wallet card. You never leave
+   the page: there is no redirect.
 3. Click **+ Create a split**: title "Team dinner", total **10 NEAR**,
    your name, participants "You / Sinta / Raka" — **see** the preview:
    "3 people · 3.33333 NEAR each (rounded fairly) · Total 10 NEAR". Save —
@@ -88,45 +92,45 @@ npm run dev        # or: npm run build && npm run preview
 
 ## How NEAR is used (concretely)
 
-All payment code is against the **real** `near-api-js@2.1.4` API, verified
-before coding from the installed package's own TypeScript definitions
-(`lib/browser-connect.d.ts`, `@near-js/wallet-account`, `@near-js/accounts`,
-`@near-js/utils`). The exact calls used (all in `src/wallet.ts`):
+Wallet connections run through **NEAR Connect**
+(`@hot-labs/near-connect@0.12.0`), verified before coding from the
+installed package's own TypeScript definitions
+(`build/NearConnector.d.ts`, `build/types/index.d.ts`,
+`build/actions/types.d.ts`). The exact calls used (all in
+`src/wallet.ts`):
 
 | Purpose | Call |
 | --- | --- |
-| Connect | `connect({ networkId, nodeUrl, walletUrl, helperUrl, keyStore: new keyStores.BrowserLocalStorageKeyStore() })` → `Promise<Near>` |
-| Wallet session | `new WalletConnection(near, 'nearsplit')` — `isSignedIn()`, `isSignedInAsync()`, `getAccountId()`, `signOut()` |
-| Sign in | `wallet.requestSignIn({ successUrl, failureUrl })` — redirect to MyNearWallet (testnet: `testnet.mynearwallet.com`, mainnet: `app.mynearwallet.com`), returns to the exact same URL (pay-link hash included) |
-| Balance | `wallet.account().getAccountBalance()` → `available` (yocto string) |
-| Pay a share | `wallet.account().sendMoney(organizerAccount, new BN(shareYocto))` → `FinalExecutionOutcome`; tx hash from `transaction_outcome.id` |
-| Amount conversion | `utils.format.parseNearAmount` / `formatNearAmount` (cross-checked against NearSplit's own strict BigInt parser in tests) |
+| Connector | `new NearConnector({ network: 'testnet' \| 'mainnet' })` — loads the wallet manifest (Meteor, Intear, HOT, …) and renders its own picker popup |
+| Connect | `connector.connect()` → `Promise<NearWalletBase>` — opens the picker, runs the chosen wallet's `signIn({ network })`; closing the picker rejects with `Error("User rejected")` |
+| Session restore | `connector.getConnectedWallet()` → `{ wallet, accounts }`, `accounts[0].accountId`; events `connector.on('wallet:signIn' \| 'wallet:signOut', …)` keep app state in sync |
+| Disconnect | `connector.disconnect()` |
+| Balance | JSON-RPC `view_account` against the network RPC via `fetch` → spendable = `amount − locked` (yocto string) — a plain read needs no SDK |
+| Pay a share | `wallet.signAndSendTransaction({ receiverId: organizerAccount, actions: [{ type: 'Transfer', params: { deposit: shareYocto } }] })` → `FinalExecutionOutcome`; tx hash from `transaction_outcome.id` |
+| Amount conversion | NearSplit's own strict BigInt parser in `src/money.ts` (user input is never trusted to library converters) |
 
 Networks: testnet RPC `https://rpc.testnet.near.org`, mainnet RPC
 `https://rpc.mainnet.near.org`; explorers `testnet.nearblocks.io` /
-`nearblocks.io`. Switching networks rebuilds the whole config.
+`nearblocks.io`. Switching networks signs the current session out and
+rebuilds the connector for the new network.
 
-Two integration details worth knowing:
+### Why NEAR Connect (and not MyNearWallet)
 
-- **Redirect-safe pay links.** Wallet connect is a full-page redirect, so
-  before redirecting, the pay payload is stashed in `sessionStorage`
-  (in addition to being in the successUrl's hash). If the round trip ever
-  drops the hash, the app restores the pay route from the stash on boot.
-- **Browser shims (standard for near-api-js + Vite).** borsh needs a
-  global `Buffer` (provided via the `buffer` package in `src/main.ts`),
-  and `@near-js/providers` reads `global.fetch` (vite config maps
-  `global` → `globalThis`, so it finds `window.fetch` and never loads its
-  node-fetch fallback). Also note, verified in tests:
-  `utils.format.parseNearAmount('abc')` returns garbage instead of
-  failing — which is why user input is validated by NearSplit's own
-  strict parser in `src/money.ts`, and near-api-js's converters are only
-  used on well-formed amounts.
+The first NearSplit build connected wallets through MyNearWallet
+(near-api-js `WalletConnection`, full-page redirect). **MyNearWallet was
+sunset on 2026-10-31** — account creation, swaps and *new app
+connections* are switched off, so that flow can no longer connect any
+wallet, on any network. NearSplit therefore migrated to NEAR Connect —
+the connector NEAR's own current frontend documentation uses. Bonus: the
+popup flow never navigates away, so a pay link stays on screen while
+connecting, and the `sessionStorage` stash the redirect flow needed to
+protect the link could be deleted entirely.
 
 ## Architecture
 
 - **Stack**: Vite 6 + TypeScript (vanilla DOM, no framework) +
-  `near-api-js@2.1.4` (+ `bn.js` for the `sendMoney` amount type, +
-  `buffer` polyfill). Production bundle ≈ 480 kB JS (135 kB gzip) + 9 kB CSS.
+  `@hot-labs/near-connect@0.12.0` as the only runtime dependency.
+  Production bundle ≈ 94 kB JS (27 kB gzip) + 9 kB CSS.
 - **No backend**: a split is just data. The organizer's copy lives in
   `localStorage` (`nearsplit.splits.v1`); each pay link carries its own
   copy of the share data in the URL hash, so links work on any device
@@ -139,23 +143,26 @@ Two integration details worth knowing:
   confirms from the explorer or marks shares paid manually. This is
   deliberate: zero infrastructure, zero data leaving the device, and
   links that keep working forever.
-- **Code layout**: `src/wallet.ts` (all NEAR integration),
+- **Code layout**: `src/wallet.ts` (all NEAR integration — NEAR Connect
+  connector, session state, RPC balance, payments),
   `src/money.ts` (BigInt yocto math + strict parsing),
   `src/validate.ts` (NEAR account-id grammar), `src/links.ts` (pay-link
-  encode/decode + redirect stash), `src/store.ts` (localStorage),
+  encode/decode), `src/store.ts` (localStorage),
   `src/views/` (home, create, detail, pay), `src/main.ts` (hash router,
   network toggle, wallet bootstrap).
 
 ## Tests
 
 ```bash
-npm run test:unit    # 37 checks: split math exactness (equal + remainder,
+npm run test:unit    # 47 checks: split math exactness (equal + remainder,
                      # custom-sum validation, tip), account-id validation,
-                     # pay-link round-trip, yocto parse/format round-trips
-                     # (ours + near-api-js's), against the real TS sources
+                     # pay-link round-trip, yocto parse/format round-trips,
+                     # and the wallet module's network config, explorer
+                     # URLs, error mapping and no-session restore with the
+                     # real @hot-labs/near-connect bundled in
 npm run build
 npm install --no-save jsdom && npm run test:smoke
-                     # 20 checks: the built bundle end-to-end in jsdom —
+                     # 21 checks: the built bundle end-to-end in jsdom —
                      # home -> create (10 NEAR / 3 sums exactly in yocto)
                      # -> persistence -> detail -> pay link -> pay view
                      # in its no-wallet state (Connect offered, no fake pay)
@@ -163,13 +170,16 @@ npm install --no-save jsdom && npm run test:smoke
 
 ## Known limitation (honest)
 
-The live wallet redirect + `sendMoney` flow cannot be exercised
-end-to-end from a headless sandbox — it needs a real browser and a real
-(testnet) account. The integration code is strictly typed against the
-verified near-api-js definitions, the built bundle is smoke-tested, and
-the judge walkthrough above performs the real payment on testnet in
-about a minute. First recommended real-world check: one testnet payment
-of a small share after deploying (see SUBMISSION.md).
+The live wallet flow — NEAR Connect picker popup, the wallet's own
+approval screen, and `signAndSendTransaction` — cannot be exercised
+end-to-end from a headless sandbox: it needs a real browser and a real
+(testnet) account in a real wallet (Intear/Meteor). The integration code
+is strictly typed against the verified near-connect definitions, the
+built bundle is smoke-tested (including booting with the connector's
+wallet manifest unreachable), and the judge walkthrough above performs
+the real payment on testnet in about a minute. First recommended
+real-world check: one testnet payment of a small share after deploying
+(see SUBMISSION.md).
 
 ## AI-use disclosure
 

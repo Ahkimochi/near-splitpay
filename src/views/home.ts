@@ -3,7 +3,7 @@
 import { h } from '../ui';
 import { formatYocto } from '../money';
 import { shortenAccountId } from '../validate';
-import { NETWORKS } from '../wallet';
+import { WALLET_CREATE_URL } from '../wallet';
 import type { WalletState } from '../types';
 
 export interface HomeCallbacks {
@@ -46,17 +46,17 @@ export function renderWalletCard(state: WalletState, cb: HomeCallbacks): HTMLEle
         h('div', { class: 'wallet-main' },
           h('div', { class: 'wallet-title' }, 'No NEAR wallet connected'),
           h('div', { class: 'wallet-sub' },
-            `Connect to pay shares on ${netLabel}. Creating splits works without a wallet.`),
+            `Connect with Meteor, Intear, HOT and more to pay shares on ${netLabel}. Creating splits works without a wallet.`),
         ),
       ),
     );
     const btn = h('button', { class: 'btn btn-secondary btn-small', type: 'button' },
-      cb.connectBusy ? 'Opening wallet…' : 'Connect NEAR wallet') as HTMLButtonElement;
+      cb.connectBusy ? 'Opening wallet picker…' : 'Connect NEAR wallet') as HTMLButtonElement;
     btn.disabled = cb.connectBusy;
     btn.addEventListener('click', cb.onConnect);
     const createLink = h('a', {
       class: 'btn btn-ghost btn-small',
-      href: NETWORKS[state.network].walletHome,
+      href: WALLET_CREATE_URL[state.network],
       target: '_blank', rel: 'noopener',
     }, state.network === 'testnet' ? 'Create a free testnet account' : 'Create a NEAR account');
     card.append(h('div', { class: 'wallet-actions' }, btn, createLink));
@@ -70,7 +70,7 @@ export function renderHowItWorks(): HTMLElement {
     h('ol', { class: 'how-list' },
       h('li', {}, 'Create a split: title, total in NEAR, who is in. Shares are calculated exactly — down to the last yocto.'),
       h('li', {}, 'Send each person their personal pay link. No app install, no sign-up for them.'),
-      h('li', {}, 'They open the link, connect their NEAR wallet, and pay their exact share to you in one tap. The payment settles on NEAR and shows up on NearBlocks.'),
+      h('li', {}, 'They open the link, connect their NEAR wallet (Meteor, Intear, HOT, … via NEAR Connect), and pay their exact share to you in one tap. The payment settles on NEAR and shows up on NearBlocks.'),
     ),
     h('p', { class: 'hint' },
       'NearSplit has no backend and never touches your keys — payments go wallet-to-wallet on NEAR. Splits are stored only on this device; the pay links carry the bill details.'),

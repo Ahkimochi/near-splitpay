@@ -3,7 +3,9 @@
 // toggle -> create flow (equal split over yocto BigInt math) -> persistence
 // -> split detail -> pay-link decode -> pay view in its not-connected state.
 // Verifies the app never fakes a payment: with no wallet, the pay page
-// offers only "Connect NEAR wallet".
+// offers only "Connect NEAR wallet" (NEAR Connect popup flow — the bundle
+// must boot and render with the connector's manifest unreachable, as in
+// this sandbox).
 // Run: npm run build, then npm install --no-save jsdom && node scripts/smoke.mjs
 import { readFileSync, readdirSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
@@ -44,6 +46,9 @@ check('network toggle present with Testnet default',
 check('wallet card shows not-connected state', text('.wallet-title').includes('No NEAR wallet connected'));
 check('connect button offered on home',
   [...document.querySelectorAll('button')].some((b) => b.textContent.includes('Connect NEAR wallet')));
+check('testnet account-creation link points at Intear (not MyNearWallet)',
+  [...document.querySelectorAll('a')].some((a) => (a.getAttribute('href') ?? '').includes('intear')) &&
+  ![...document.querySelectorAll('a')].some((a) => (a.getAttribute('href') ?? '').includes('mynearwallet')));
 check('empty state shown', text('.empty-state h3').includes('No splits'));
 check('how-it-works rendered', text('.how-card').includes('How it works'));
 

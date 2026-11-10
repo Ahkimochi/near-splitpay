@@ -20,15 +20,15 @@
 | `email` | `[YOUR EMAIL]` |
 | `size` | `1` |
 | `tracks` | `["realworld", "social"]` |
-| `nearAddress` | `[YOUR MAINNET NEAR ACCOUNT]` — **must be a mainnet account** (e.g. `yourname.near`, or a 64-char implicit account). Prizes are paid in NEAR to this account. A `.testnet` account will NOT work for payout. Create one at https://app.mynearwallet.com/ if you don't have one yet. |
-| `projectUrl` | `[PUBLIC REPO URL]` — e.g. `https://github.com/Ahkimochi/near-splitpay` |
+| `nearAddress` | `richoco.near` — FILLED 2026-11-10 and verified by Ciel against NEAR mainnet RPC (`view_account` returned the account: exists, no contract deployed, balance 0 NEAR). This is the payout account; prizes are paid in NEAR here. |
+| `projectUrl` | `https://github.com/Ahkimochi/near-splitpay` — FILLED 2026-11-10 (public repo, 26/26 files on main, README renders). Live demo: https://ahkimochi.github.io/near-splitpay/ (GitHub Pages, gh-pages branch, deployment verified rendering the app). |
 | `demoUrl` | `[YOUR X DEMO POST URL]` — the post from step 5 below |
-| `idea` | see section (b) — paste exactly, 986 characters (allowed: 20–2000) |
+| `idea` | see section (b) — paste exactly, 987 characters (allowed: 20–2000) |
 | `consent` | `true` — only after you agree to: "I agree that the organizers may use these details to review our submission and contact us about this hackathon." |
 
-## (b) `idea` description (986 characters)
+## (b) `idea` description (987 characters)
 
-> Bill splitting still runs on receipt screenshots, bank details in group chats, and one person chasing everyone for days. NearSplit turns it into one link per person. The organizer enters a title, a total in NEAR, and who is splitting; NearSplit computes exact shares in yoctoNEAR (BigInt math with the remainder distributed, so shares sum exactly to the total), adds an optional tip, and generates a personal pay link for every participant — the bill data travels inside the link itself, so there is no backend, no sign-up, and nothing to install. Opening a link shows your share and the organizer's NEAR account; connect a NEAR wallet (via near-api-js) and pay in one tap. The payment is a wallet-to-wallet NEAR transfer that settles in seconds for a fraction of a cent, and both sides can verify it on NearBlocks. The organizer tracks collected vs. outstanding and can mark cash payments manually. NearSplit is programmable money at its most ordinary: group expenses, settled on NEAR.
+> Bill splitting still runs on receipt screenshots, bank details in group chats, and one person chasing everyone for days. NearSplit turns it into one link per person. The organizer enters a title, a total in NEAR, and who is splitting; NearSplit computes exact shares in yoctoNEAR (BigInt math with the remainder distributed, so shares sum exactly to the total), adds an optional tip, and generates a personal pay link for every participant — the bill data travels inside the link itself, so there is no backend, no sign-up, and nothing to install. Opening a link shows your share and the organizer's NEAR account; connect a NEAR wallet (via NEAR Connect) and pay in one tap. The payment is a wallet-to-wallet NEAR transfer that settles in seconds for a fraction of a cent, and both sides can verify it on NearBlocks. The organizer tracks collected vs. outstanding and can mark cash payments manually. NearSplit is programmable money at its most ordinary: group expenses, settled on NEAR.
 
 ## (c) X demo post — draft (post it yourself, attach a demo video or screenshots)
 
@@ -49,11 +49,13 @@ tags for reach: @NearLegion, @NearBuilders.
 
 ## (d) Step-by-step checklist (in this order)
 
-1. **Create a MAINNET NEAR account** (for the prize payout) at
-   https://app.mynearwallet.com/ — write the account id into field
-   `nearAddress` above. This is separate from any testnet account.
-   (For trying the app itself, also create a free testnet account at
-   https://testnet.mynearwallet.com/ — it comes with test NEAR.)
+1. **Create a MAINNET NEAR account** (for the prize payout) — DONE:
+   `richoco.near`, already filled into `nearAddress` above and verified
+   on mainnet. This is separate from any testnet account. (Note:
+   MyNearWallet was sunset on 2026-10-31 and no longer creates accounts
+   or connects to apps; for trying the app itself, create a free testnet
+   account inside a wallet with testnet support — Intear Wallet or
+   Meteor Wallet — it comes with test NEAR.)
 2. **Create the public GitHub repo**: new public repository (suggested name
    `near-splitpay`), then push this folder to it. The repo already contains
    the MIT `LICENSE`, `README.md`, and a `.gitignore` excluding
@@ -69,10 +71,14 @@ tags for reach: @NearLegion, @NearBuilders.
    Confirm the live URL shows the NearSplit home screen. Keep the demo up
    at least until results (18 Nov), ideally 25 Nov.
 4. **Test one real testnet payment on the live URL**: create a testnet
-   split, open a pay link in a second browser/profile, connect the testnet
-   wallet, pay, and check the tx on testnet.nearblocks.io. (The wallet
-   redirect flow can't be tested from the build sandbox — this is the
-   first real end-to-end check.)
+   split, open a pay link in a second browser/profile, click "Connect
+   NEAR wallet" and pick a wallet with testnet support in the NEAR
+   Connect popup — **Intear Wallet** or **Meteor Wallet** (create a free
+   testnet account inside the wallet first if needed) — then pay and
+   check the tx on testnet.nearblocks.io. (The popup wallet flow can't
+   be tested from the build sandbox — this is the first real end-to-end
+   check. Do NOT use MyNearWallet: it was sunset on 2026-10-31 and new
+   app connections are switched off.)
 5. **Post the demo on X** from your own account using the draft in
    section (c): fill in the live demo + repo URLs, attach the video or
    screenshots, keep `@NEARProtocol` and `#NEARHackathon` in the text.
